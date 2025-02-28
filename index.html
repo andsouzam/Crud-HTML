@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Crud Feito por Anderson Miranda</title>
+    <style>
+        body {
+            background-color: #808080; /* Cinza */
+            color: white;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #a9a9a9; /* Cinza claro */
+            color: black;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .edit-mode {
+            display: none;
+        }
+        .clear-button {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+        }
+        .action-buttons {
+            margin-top: 20px;
+        }
+        .highlight {
+            background-color: #003366;
+            color: white;
+        }
+        .form-container {
+            display: none;
+        }
+        .additional-info-container {
+            display: none;
+        }
+        .view-mode {
+            white-space: pre-wrap; /* Permite quebra de linha no modo de visualização */
+        }
+    </style>
+</head>
+<body>
+    <h1>Crud Feito por Anderson Miranda</h1>
+    <div id="form-container" class="form-container">
+        <form id="add-form">
+            <input type="text" id="new-nome" placeholder="Nome" required>
+            <input type="date" id="new-data-nascimento" placeholder="Data de Nascimento" required>
+            <select id="new-sexo" required>
+                <option value="Masculino">Masculino</option>
+                <option value="Feminino">Feminino</option>
+                <option value="Indefinido">Prefiro Não Informar</option>
+            </select>
+            <textarea id="new-descricao" placeholder="Descrição" maxlength="1000"></textarea>
+            <button type="submit">Salvar</button>
+            <button type="button" onclick="cancelAdd()">Cancelar</button>
+        </form>
+    </div>
+    <button id="add-button" onclick="showAddForm()">Adicionar</button>
+    <table>
+        <tr>
+            <th>ID</th>
+            <th>Nome</th>
+            <th>Data de Nascimento</th>
+            <th>Idade</th>
+            <th>Sexo</th>
+            <th>Descrição</th>
+            <th>Informações Adicionais</th>
+        </tr>
+        <tbody id="data-table">
+            <!-- Data will be inserted here by JavaScript -->
+        </tbody>
+    </table>
+
+    <div class="action-buttons">
+        <button id="edit-button" onclick="editRow()" style="display:none;">Editar</button>
+        <button id="save-button" onclick="saveRow()" style="display:none;">Salvar</button>
+        <button id="delete-button" onclick="confirmDeleteRow()" style="display:none;">Deletar</button>
+    </div>
+
+    <button class="clear-button" onclick="confirmClearData()">Limpar Dados</button>
+
+    <script>
+        let data = JSON.parse(localStorage.getItem('crudData')) || [];
+        let selectedRowId = null;
+        let isEditing = false;
+        let isAdding = false;
+        let nextId = data.length ? Math.max(...data.map(item => item.id)) + 1 : 1;
+
+        function loadTableData(items) {
+            const tableBody = document.getElementById('data-table');
+            tableBody.innerHTML = '';
+
+            items.sort((a, b) => a.nome.localeCompare(b.nome));
+
+            items.forEach(item => {
+                if (!item.deleted) {
+                    let row = tableBody.insertRow();
+                    row.setAttribute('data-id', item.id);
+                    row.innerHTML = `
+                        <td>${item.id}</td>
+                        <td><span class="view-mode">${item.nome}</span><input class="edit-mode" type="text" value="${item.nome}" style="display:none;"></td>
+                        <td><span class="view-mode">${item.dataNascimento}</span><input class="edit-mode" type="date" value="${item.dataNascimento}" style="display:none;"></td>
+                        <td><span class="view-mode">${calculateAge(item.dataNascimento)}</span></td>
+                        <td>
+                            <span class="view-mode">${item.sexo === 'Indefinido' ? 'Prefiro Não Informar' : item.sexo}</span>
+                            <select class="edit-mode" style="display:none;">
+                                <option value="Masculino" ${item.sexo === 'Masculino' ? 'selected' : ''}>Masculino</option>
+                                <option value="Feminino" ${item.sexo === 'Feminino' ? 'selected' : ''}>Feminino</option>
+                                <option value="Indefinido" ${item.sexo === 'Indefinido' ? 'selected' : ''}>Prefiro Não Informar</option>
+                            </select>
+                        </td>
+                        <td>
+                            <span class="view-mode">${formatDescription(item.descricao)}</span>
+                            <textarea class="edit-mode" style="display:none;" maxlength="1000">${item.descricao}</textarea>
+                        </td>
+                        <td>
+                            <span class="view-mode">Data de Cadastro: ${item.dataCadastro}</span>
+                        </td>
+                    `;
+                    row.addEventListener('click', () => {
+                        if (!isEditing && !isAdding) {
+                            selectRow(item.id);
+                        }
+                    });
+                }
+            });
+        }
+
+        function formatDescription(description) {
+            return description.replace(/(.{100})/g, '$1<br>');
+        }
+
+        function calculateAge(dateString) {
+            const today = new Date();
+            const birthDate = new Date(dateString);
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const monthDifference = today.getMonth() - birthDate.getMonth();
+            if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+            return age;
+        }
+
+        function validateDate(dateString) {
+            const today = new Date();
+            const birthDate = new Date(dateString);
+            const minDate = new Date('1800-01-01');
+            return birthDate <= today && birthDate >= minDate;
+        }
+
+        function selectRow(id) {
+            if (selectedRowId !== null && selectedRowId !== id) {
+                const previousRow = document.querySelector(`tr[data-id='${selectedRowId}']`);
+                previousRow.classList.remove('highlight');
+                previousRow.querySelectorAll('.view-mode').forEach(el => el.style.display = 'inline');
+                previousRow.querySelectorAll('.edit-mode').forEach(el => el.style.display = 'none');
+            }
+            selectedRowId = id;
+            const row = document.querySelector(`tr[data-id='${id}']`);
+            row.classList.add('highlight');
+            document.getElementById('edit-button').style.display = 'inline';
+            document.getElementById('delete-button').style.display = 'inline';
+            document.getElementById('save-button').style.display = 'none';
+        }
+
+        function updateField(id, field, value) {
+            const item = data.find(item => item.id === id);
+            if (item) {
+                item[field] = value;
+            }
+            saveData();
+        }
+
+        function confirmDeleteRow() {
+            if (confirm("Tem certeza que deseja deletar esta linha?")) {
+                deleteRow();
+            }
+        }
+
+        function deleteRow() {
+            if (selectedRowId !== null) {
+                const item = data.find(item => item.id === selectedRowId);
+                if (item) {
+                    item.deleted = true;
+                    loadTableData(data);
+                    saveData();
+                    selectedRowId = null;
+                    document.getElementById('edit-button').style.display = 'none';
+                    document.getElementById('delete-button').style.display = 'none';
+                    document.getElementById('save-button').style.display = 'none';
+                }
+            }
+        }
+
+        function addRow(event) {
+            event.preventDefault();
+            const nome = document.getElementById('new-nome').value;
+            const dataNascimento = document.getElementById('new-data-nascimento').value;
+            if (!validateDate(dataNascimento)) {
+                alert('Data de nascimento inválida. Deve ser entre 01/01/1800 e hoje.');
+                return;
+            }
+            const idade = calculateAge(dataNascimento);
+            const sexo = document.getElementById('new-sexo').value;
+            const descricao = document.getElementById('new-descricao').value;
+            if (descricao.length > 1000) {
+                alert('A descrição não pode ter mais de 1000 caracteres.');
+                return;
+            }
+            const dataCadastro = new Date().toLocaleString();
+            const newId = nextId++;
+
+            data.push({ id: newId, nome, dataNascimento, idade, sexo, descricao, dataCadastro, deleted: false });
+            loadTableData(data);
+            saveData();
+
+            document.getElementById('add-form').reset();
+            document.getElementById('form-container').style.display = 'none';
+            document.getElementById('add-button').style.display = 'inline';
+            document.querySelector('.clear-button').style.display = 'inline';
+            isAdding = false;
+        }
+
+        function showAddForm() {
+            isAdding = true;
+            document.getElementById('form-container').style.display = 'block';
+            document.getElementById('add-button').style.display = 'none';
+            document.getElementById('edit-button').style.display = 'none';
+            document.getElementById('save-button').style.display = 'none';
+            document.getElementById('delete-button').style.display = 'none';
+            document.querySelector('.clear-button').style.display = 'none';
+        }
+
+        function cancelAdd() {
+            isAdding = false;
+            document.getElementById('form-container').style.display = 'none';
+            document.getElementById('add-button').style.display = 'inline';
+            document.getElementById('edit-button').style.display = 'none';
+            document.getElementById('save-button').style.display = 'none';
+            document.getElementById('delete-button').style.display = 'none';
+            document.querySelector('.clear-button').style.display = 'inline';
+        }
+
+        function editRow() {
+            if (selectedRowId !== null) {
+                isEditing = true;
+                const row = document.querySelector(`tr[data-id='${selectedRowId}']`);
+                row.querySelectorAll('.view-mode').forEach(el => el.style.display = 'none');
+                row.querySelectorAll('.edit-mode').forEach(el => el.style.display = 'inline');
+                document.getElementById('edit-button').style.display = 'none';
+                document.getElementById('save-button').style.display = 'inline';
+                document.getElementById('delete-button').style.display = 'none';
+                document.getElementById('form-container').style.display = 'none';
+                document.getElementById('add-button').style.display = 'none';
+                document.querySelector('.clear-button').style.display = 'none';
+
+                // Hide other rows
+                document.querySelectorAll('tr').forEach(tr => {
+                    if (tr.getAttribute('data-id') !== selectedRowId.toString()) {
+                        tr.style.display = '';
+                    }
+                });
+            }
+        }
+
+        function saveRow() {
+            if (selectedRowId !== null) {
+                const row = document.querySelector(`tr[data-id='${selectedRowId}']`);
+                const nome = row.querySelector('input[type="text"]').value;
+                const dataNascimento = row.querySelector('input[type="date"]').value;
+                if (!validateDate(dataNascimento)) {
+                    alert('Data de nascimento inválida. Deve ser entre 01/01/1800 e hoje.');
+                    return;
+                }
+                const idade = calculateAge(dataNascimento);
+                const sexo = row.querySelector('select').value;
+                const descricao = row.querySelector('textarea').value;
+                if (descricao.length > 1000) {
+                    alert('A descrição não pode ter mais de 1000 caracteres.');
+                    return;
+                }
+
+                updateField(selectedRowId, 'nome', nome);
+                updateField(selectedRowId, 'dataNascimento', dataNascimento);
+                updateField(selectedRowId, 'idade', idade);
+                updateField(selectedRowId, 'sexo', sexo);
+                updateField(selectedRowId, 'descricao', descricao);
+
+                loadTableData(data);
+                saveData();
+                selectedRowId = null;
+                isEditing = false;
+                document.getElementById('edit-button').style.display = 'none';
+                document.getElementById('save-button').style.display = 'none';
+                document.getElementById('delete-button').style.display = 'none';
+                document.getElementById('form-container').style.display = 'none';
+                document.getElementById('add-button').style.display = 'inline';
+                document.querySelector('.clear-button').style.display = 'inline';
+
+                // Show all rows
+                document.querySelectorAll('tr').forEach(tr => {
+                    tr.style.display = '';
+                });
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('crudData', JSON.stringify(data));
+        }
+
+        function confirmClearData() {
+            if (confirm("Tem certeza que deseja limpar todos os dados?")) {
+                clearData();
+            }
+        }
+
+        function clearData() {
+            localStorage.removeItem('crudData');
+            data = [];
+            loadTableData(data);
+            nextId = 1;            
+            saveData();
+            selectedRowId = null;
+        }
+
+        document.getElementById('add-form').addEventListener('submit', addRow);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTableData(data);
+        });
+    </script>
+</body>
+</html>
